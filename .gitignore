@@ -119,6 +119,7 @@ app.*.symbols
 
 # 忽略assets中的EPUB文件
 assets/*.epub
+update_ip.sh
 
 # 但保留示例文件（如果需要）
 !assets/sample.epub
