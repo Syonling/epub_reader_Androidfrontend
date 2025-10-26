@@ -28,7 +28,7 @@
 [此处可添加应用截图]
 ```
 
-### 🏗️ 项目架构
+### 🏗️ 项目架构 - 前端
 
 ```
 epub_reader/
@@ -49,10 +49,13 @@ epub_reader/
 │   │   ├── text_input_dialog.dart
 │   │   └── result_dialog.dart
 │   └── main.dart           # 应用入口
-├── assets/                 # 资源文件
-└── backend/                # 后端服务（独立仓库）
-    └── backend.py
+└── assets/                 # 资源文件
+
 ```
+
+### 后端
+[点击访问后端](https://github.com/Syonling/epub_reader_backend)
+
 
 ### 🚀 快速开始
 
@@ -166,6 +169,8 @@ static const String baseUrl = 'http://YOUR_SERVER_IP:5001';
 ---
 
 ## <a name="english"></a>🇬🇧 English Documentation
+
+### [To Backend](https://github.com/Syonling/epub_reader_backend)
 
 ### ✨ Features
 
