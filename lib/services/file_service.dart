@@ -1,51 +1,57 @@
-//文件操作
-import 'package:file_picker/file_picker.dart';
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/book.dart';
 
 class FileService {
-  // 从文件选择器选择EPUB
-  Future<Book?> pickEpubFile() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['epub'],
-        withData: true,
-      );
-
-      if (result != null) {
-        final file = result.files.single;
-        final bytes = file.bytes ?? await File(file.path!).readAsBytes();
-        
-        return Book(
-          fileName: file.name,
-          filePath: file.path,
-          bytes: bytes,
+  // 获取assets中的所有epub书籍
+  static Future<List<Book>> loadBooksFromAssets() async {
+    final manifestContent = await rootBundle.loadString('AssetManifest.json');
+    final Map<String, dynamic> manifestMap = 
+        Map<String, dynamic>.from(
+            (await rootBundle.loadStructuredData('AssetManifest.json', 
+                (jsonStr) async => Map<String, dynamic>.from(
+                    Map<String, dynamic>.from(
+                        Uri.dataFromString(manifestContent).data!.contentAsString() as Map
+                    )
+                )
+            ))
         );
-      }
-      return null;
-    } catch (e) {
-      throw Exception('打开文件失败: $e');
-    }
-  }
 
-  // 从assets加载EPUB
-  Future<Book> loadAssetEpub(String assetPath) async {
-    try {
-      final data = await rootBundle.load(assetPath);
-      final bytes = data.buffer.asUint8List();
+    final epubPaths = manifestMap.keys
+        .where((String key) => key.contains('assets/books/') && key.endsWith('.epub'))
+        .toList();
+
+    List<Book> books = [];
+    for (int i = 0; i < epubPaths.length; i++) {
+      final path = epubPaths[i];
+      final fileName = path.split('/').last.replaceAll('.epub', '');
       
-      return Book(
-        fileName: assetPath.split('/').last,
-        bytes: bytes,
-      );
-    } catch (e) {
-      throw Exception('加载资源文件失败: $e');
+      books.add(Book(
+        id: 'book_$i',
+        title: fileName,
+        author: 'Unknown',
+        filePath: path,
+      ));
     }
+
+    return books;
   }
 
-  // 未来可以添加其他文件操作
-  // Future<void> saveToLocal(String content, String filename) async { ... }
+  // 将asset文件复制到临时目录以供epub_view使用
+  static Future<String> copyAssetToTemp(String assetPath) async {
+    final byteData = await rootBundle.load(assetPath);
+    final tempDir = await getTemporaryDirectory();
+    final fileName = assetPath.split('/').last;
+    final file = File('${tempDir.path}/$fileName');
+    
+    await file.writeAsBytes(
+      byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      ),
+    );
+    
+    return file.path;
+  }
 }

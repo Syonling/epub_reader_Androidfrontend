@@ -1,0 +1,326 @@
+//专业文本分页组件
+import 'package:flutter/material.dart';
+
+class TextPageView extends StatefulWidget {
+  final String text;
+  final TextStyle textStyle;
+  final String? title;
+  final TextStyle? titleStyle;
+  final Function(String)? onTextSelected;
+  final VoidCallback? onTap;
+
+  const TextPageView({
+    super.key,
+    required this.text,
+    required this.textStyle,
+    this.title,
+    this.titleStyle,
+    this.onTextSelected,
+    this.onTap,
+  });
+
+  @override
+  State<TextPageView> createState() => _TextPageViewState();
+}
+
+class _TextPageViewState extends State<TextPageView> {
+  List<String> _pages = [];
+  int _currentPage = 0;
+  final PageController _pageController = PageController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _calculatePages();
+    });
+  }
+
+  @override
+  void didUpdateWidget(TextPageView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text || 
+        oldWidget.textStyle != widget.textStyle ||
+        oldWidget.title != widget.title) {
+      _calculatePages();
+    }
+  }
+
+  void _calculatePages() {
+    if (!mounted) return;
+
+    final size = MediaQuery.of(context).size;
+    final padding = MediaQuery.of(context).padding;
+    
+    // 计算可用区域
+    final availableWidth = size.width - 48; // 左右padding 24*2
+    final availableHeight = size.height 
+        - padding.top 
+        - kToolbarHeight 
+        - 40  // 顶部padding
+        - 60; // 底部按钮区域
+
+    // 标题高度
+    double titleHeight = 0;
+    if (widget.title != null && widget.title!.isNotEmpty) {
+      final titlePainter = TextPainter(
+        text: TextSpan(
+          text: widget.title,
+          style: widget.titleStyle ?? widget.textStyle.copyWith(
+            fontSize: widget.textStyle.fontSize! + 6,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: null,
+      );
+      titlePainter.layout(maxWidth: availableWidth);
+      titleHeight = titlePainter.height + 24; // 加上底部间距
+    }
+
+    final contentHeight = availableHeight - titleHeight;
+
+    // 使用TextPainter进行精确分页
+    final pages = _splitTextIntoPages(
+      widget.text,
+      widget.textStyle,
+      availableWidth,
+      contentHeight,
+      includeTitle: _currentPage == 0,
+    );
+
+    setState(() {
+      _pages = pages;
+    });
+  }
+
+  List<String> _splitTextIntoPages(
+    String text,
+    TextStyle style,
+    double maxWidth,
+    double maxHeight,
+    {bool includeTitle = false}
+  ) {
+    if (text.isEmpty) return [''];
+
+    final paragraphs = text.split('\n');
+    final List<String> pages = [];
+    final List<String> currentPageLines = [];
+    double currentHeight = 0;
+
+    // 创建TextPainter用于测量
+    final textPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.left,
+    );
+
+    for (int i = 0; i < paragraphs.length; i++) {
+      final paragraph = paragraphs[i];
+      
+      // 空行也要处理
+      if (paragraph.trim().isEmpty) {
+        final lineHeight = style.fontSize! * (style.height ?? 1.0);
+        
+        if (currentHeight + lineHeight > maxHeight && currentPageLines.isNotEmpty) {
+          pages.add(currentPageLines.join('\n'));
+          currentPageLines.clear();
+          currentHeight = 0;
+        }
+        
+        currentPageLines.add('');
+        currentHeight += lineHeight;
+        continue;
+      }
+
+      // 测量段落高度
+      textPainter.text = TextSpan(text: paragraph, style: style);
+      textPainter.layout(maxWidth: maxWidth);
+      
+      final paragraphHeight = textPainter.height;
+      final paragraphSpacing = 8.0; // 段落间距
+
+      // 如果当前段落加上间距会超出页面
+      if (currentHeight + paragraphHeight + paragraphSpacing > maxHeight && currentPageLines.isNotEmpty) {
+        // 保存当前页
+        pages.add(currentPageLines.join('\n'));
+        currentPageLines.clear();
+        currentHeight = 0;
+      }
+
+      // 如果单个段落就超过了一页的高度，需要按行拆分
+      if (paragraphHeight > maxHeight) {
+        final lines = _splitParagraphIntoLines(paragraph, style, maxWidth, maxHeight);
+        
+        for (var line in lines) {
+          textPainter.text = TextSpan(text: line, style: style);
+          textPainter.layout(maxWidth: maxWidth);
+          final lineHeight = textPainter.height;
+
+          if (currentHeight + lineHeight > maxHeight && currentPageLines.isNotEmpty) {
+            pages.add(currentPageLines.join('\n'));
+            currentPageLines.clear();
+            currentHeight = 0;
+          }
+
+          currentPageLines.add(line);
+          currentHeight += lineHeight;
+        }
+      } else {
+        // 正常添加段落
+        currentPageLines.add(paragraph);
+        currentHeight += paragraphHeight + paragraphSpacing;
+      }
+    }
+
+    // 添加最后一页
+    if (currentPageLines.isNotEmpty) {
+      pages.add(currentPageLines.join('\n'));
+    }
+
+    return pages.isEmpty ? [''] : pages;
+  }
+
+  List<String> _splitParagraphIntoLines(String paragraph, TextStyle style, double maxWidth, double maxHeight) {
+    // 简化：按估算的每行字符数分割
+    final charsPerLine = (maxWidth / (style.fontSize! * 0.6)).floor();
+    
+    final List<String> lines = [];
+    int start = 0;
+    
+    while (start < paragraph.length) {
+      final end = (start + charsPerLine).clamp(0, paragraph.length);
+      lines.add(paragraph.substring(start, end));
+      start = end;
+    }
+
+    return lines.isEmpty ? [paragraph] : lines;
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_pages.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: _pages.length,
+            onPageChanged: (index) {
+              setState(() {
+                _currentPage = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              return GestureDetector(
+                onTap: widget.onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 标题只在第一页显示
+                      if (index == 0 && widget.title != null && widget.title!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: SelectableText(
+                            widget.title!,
+                            style: widget.titleStyle ?? widget.textStyle.copyWith(
+                              fontSize: widget.textStyle.fontSize! + 6,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onSelectionChanged: (selection, cause) {
+                              if (selection.start != selection.end && widget.onTextSelected != null) {
+                                widget.onTextSelected!(widget.title!.substring(selection.start, selection.end));
+                              }
+                            },
+                          ),
+                        ),
+                      Expanded(
+                        child: SelectableText(
+                          _pages[index],
+                          style: widget.textStyle,
+                          onSelectionChanged: (selection, cause) {
+                            if (selection.start != selection.end && widget.onTextSelected != null) {
+                              widget.onTextSelected!(_pages[index].substring(selection.start, selection.end));
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        // 页码指示器
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton.icon(
+                onPressed: _currentPage > 0
+                    ? () => _pageController.previousPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        )
+                    : null,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('上一页'),
+              ),
+              Text(
+                '${_currentPage + 1} / ${_pages.length}',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _currentPage < _pages.length - 1
+                    ? () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        )
+                    : null,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('下一页'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 提供给外部的方法
+  void nextPage() {
+    if (_currentPage < _pages.length - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void previousPage() {
+    if (_currentPage > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  int get totalPages => _pages.length;
+  int get currentPage => _currentPage;
+}

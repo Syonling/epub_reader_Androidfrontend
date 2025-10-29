@@ -1,14 +1,31 @@
-//书籍数据模型
-import 'dart:typed_data';
-
 class Book {
-  final String? fileName;
-  final String? filePath;
-  final Uint8List bytes;
+  final String id;
+  final String title;
+  final String author;
+  final String filePath;
+  final String? coverImage;
 
   Book({
-    this.fileName,
-    this.filePath,
-    required this.bytes,
+    required this.id,
+    required this.title,
+    required this.author,
+    required this.filePath,
+    this.coverImage,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'author': author,
+        'filePath': filePath,
+        'coverImage': coverImage,
+      };
+
+  factory Book.fromJson(Map<String, dynamic> json) => Book(
+        id: json['id'],
+        title: json['title'],
+        author: json['author'],
+        filePath: json['filePath'],
+        coverImage: json['coverImage'],
+      );
 }

@@ -1,0 +1,303 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
+
+class HtmlPageView extends StatefulWidget {
+  final String htmlContent;
+  final String? title;
+  final double fontSize;
+  final Function(String)? onTextSelected;
+  final VoidCallback? onTap;
+  final Function(String)? onLinkTap;
+
+  const HtmlPageView({
+    super.key,
+    required this.htmlContent,
+    this.title,
+    required this.fontSize,
+    this.onTextSelected,
+    this.onTap,
+    this.onLinkTap,
+  });
+
+  @override
+  State<HtmlPageView> createState() => _HtmlPageViewState();
+}
+
+class _HtmlPageViewState extends State<HtmlPageView> {
+  List<String> _pages = [];
+  int _currentPage = 0;
+  final PageController _pageController = PageController();
+  String _selectedText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _calculatePages();
+    });
+  }
+
+  @override
+  void didUpdateWidget(HtmlPageView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.htmlContent != widget.htmlContent || 
+        oldWidget.fontSize != widget.fontSize ||
+        oldWidget.title != widget.title) {
+      _calculatePages();
+    }
+  }
+
+  void _calculatePages() {
+    if (!mounted) return;
+
+    final size = MediaQuery.of(context).size;
+    final padding = MediaQuery.of(context).padding;
+    
+    final availableWidth = size.width - 48;
+    final availableHeight = size.height 
+        - padding.top 
+        - kToolbarHeight 
+        - 40
+        - 60;
+
+    // 计算标题高度
+    double titleHeight = 0;
+    if (widget.title != null && widget.title!.isNotEmpty && _currentPage == 0) {
+      titleHeight = widget.fontSize * 1.5 * 2 + 24; // 估算标题高度
+    }
+
+    final contentHeight = availableHeight - titleHeight;
+
+    // 将HTML按段落分页
+    final pages = _splitHtmlIntoPages(
+      widget.htmlContent,
+      contentHeight,
+      availableWidth,
+    );
+
+    setState(() {
+      _pages = pages;
+    });
+  }
+
+  List<String> _splitHtmlIntoPages(String html, double maxHeight, double maxWidth) {
+    // 预处理HTML
+    html = _preprocessHtml(html);
+    
+    // 按段落标签分割
+    final paragraphRegex = RegExp(r'(<p[^>]*>.*?</p>|<h[1-6][^>]*>.*?</h[1-6]>|<div[^>]*>.*?</div>)', 
+        dotAll: true, caseSensitive: false);
+    
+    final matches = paragraphRegex.allMatches(html);
+    final paragraphs = matches.map((m) => m.group(0)!).toList();
+    
+    if (paragraphs.isEmpty) {
+      // 如果没有段落标签，直接返回整个HTML
+      return [html];
+    }
+
+    // 估算每个段落的高度并分页
+    List<String> pages = [];
+    StringBuffer currentPage = StringBuffer();
+    double estimatedHeight = 0;
+    
+    // 每行高度估算
+    final lineHeight = widget.fontSize * 1.8;
+    
+    for (var paragraph in paragraphs) {
+      // 移除HTML标签估算文本长度
+      final textOnly = paragraph.replaceAll(RegExp(r'<[^>]*>'), '');
+      
+      // 估算这个段落需要多少行
+      final charsPerLine = (maxWidth / (widget.fontSize * 0.6)).floor();
+      final lines = (textOnly.length / charsPerLine).ceil();
+      final paragraphHeight = lines * lineHeight + 16; // 加上段落间距
+      
+      // 如果加上这个段落会超出页面
+      if (estimatedHeight + paragraphHeight > maxHeight && currentPage.isNotEmpty) {
+        pages.add(currentPage.toString());
+        currentPage = StringBuffer();
+        estimatedHeight = 0;
+      }
+      
+      currentPage.write(paragraph);
+      estimatedHeight += paragraphHeight;
+    }
+    
+    // 添加最后一页
+    if (currentPage.isNotEmpty) {
+      pages.add(currentPage.toString());
+    }
+    
+    return pages.isEmpty ? [html] : pages;
+  }
+
+  String _preprocessHtml(String html) {
+    // 移除head、style、script
+    html = html.replaceAll(RegExp(r'<head>.*?</head>', dotAll: true), '');
+    html = html.replaceAll(RegExp(r'<style[^>]*>.*?</style>', dotAll: true), '');
+    html = html.replaceAll(RegExp(r'<script[^>]*>.*?</script>', dotAll: true), '');
+    html = html.replaceAll(RegExp(r'<\?xml[^>]*\?>'), '');
+    html = html.replaceAll(RegExp(r'<!DOCTYPE[^>]*>'), '');
+    
+    // 确保有body标签
+    if (!html.contains('<body')) {
+      html = '<body>$html</body>';
+    }
+    
+    return html;
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_pages.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: _pages.length,
+            onPageChanged: (index) {
+              setState(() {
+                _currentPage = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              return GestureDetector(
+                onTap: widget.onTap,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 标题只在第一页显示
+                      if (index == 0 && widget.title != null && widget.title!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: SelectableText(
+                            widget.title!,
+                            style: TextStyle(
+                              fontSize: widget.fontSize + 6,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onSelectionChanged: (selection, cause) {
+                              if (selection.start != selection.end) {
+                                final text = widget.title!.substring(selection.start, selection.end);
+                                _selectedText = text;
+                                widget.onTextSelected?.call(text);
+                              }
+                            },
+                          ),
+                        ),
+                      // HTML内容
+                      SelectableRegion(
+                        focusNode: FocusNode(),
+                        selectionControls: MaterialTextSelectionControls(),
+                        onSelectionChanged: (selection) {
+                          if (selection != null && selection.plainText.isNotEmpty) {
+                            _selectedText = selection.plainText;
+                            widget.onTextSelected?.call(selection.plainText);
+                          }
+                        },
+                        child: Html(
+                          data: _pages[index],
+                          style: {
+                            "body": Style(
+                              fontSize: FontSize(widget.fontSize),
+                              lineHeight: LineHeight(1.8),
+                              margin: Margins.zero,
+                              padding: HtmlPaddings.zero,
+                            ),
+                            "p": Style(
+                              fontSize: FontSize(widget.fontSize),
+                              lineHeight: LineHeight(1.8),
+                              margin: Margins.only(bottom: 16),
+                            ),
+                            "div": Style(
+                              fontSize: FontSize(widget.fontSize),
+                              lineHeight: LineHeight(1.8),
+                              margin: Margins.only(bottom: 12),
+                            ),
+                            "h1": Style(
+                              fontSize: FontSize(widget.fontSize + 8),
+                              fontWeight: FontWeight.bold,
+                              margin: Margins.only(bottom: 16, top: 16),
+                            ),
+                            "h2": Style(
+                              fontSize: FontSize(widget.fontSize + 6),
+                              fontWeight: FontWeight.bold,
+                              margin: Margins.only(bottom: 12, top: 12),
+                            ),
+                            "h3": Style(
+                              fontSize: FontSize(widget.fontSize + 4),
+                              fontWeight: FontWeight.bold,
+                              margin: Margins.only(bottom: 8, top: 8),
+                            ),
+                            "a": Style(
+                              color: Colors.blue,
+                              textDecoration: TextDecoration.underline,
+                            ),
+                          },
+                          onLinkTap: (url, attributes, element) {
+                            if (url != null) {
+                              widget.onLinkTap?.call(url);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        // 页码指示器
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton.icon(
+                onPressed: _currentPage > 0
+                    ? () => _pageController.previousPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        )
+                    : null,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('上一页'),
+              ),
+              Text(
+                '${_currentPage + 1} / ${_pages.length}',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _currentPage < _pages.length - 1
+                    ? () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        )
+                    : null,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('下一页'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

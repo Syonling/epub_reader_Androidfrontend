@@ -1,62 +1,143 @@
-// 首页
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
+import '../models/book.dart';
+import '../services/epub_service.dart';
+import 'reader_screen.dart';
 
-class HomeScreen extends StatelessWidget {
-  final VoidCallback onPickFile;
-  final VoidCallback onInputText;
-  final VoidCallback? onLoadAsset;
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
-  const HomeScreen({
-    Key? key,
-    required this.onPickFile,
-    required this.onInputText,
-    this.onLoadAsset,
-  }) : super(key: key);
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<Book> _books = [];
+  bool _isLoading = true;
+  // *** 问题1修复：保存每本书的封面 ***
+  Map<String, Uint8List?> _bookCovers = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBooks();
+  }
+
+  Future<void> _loadBooks() async {
+    try {
+      final books = await EpubService.loadBooksFromAssets();
+      
+      // *** 加载每本书的封面 ***
+      final covers = <String, Uint8List?>{};
+      for (var book in books) {
+        final cover = await EpubService.getBookCover(book.filePath);
+        covers[book.filePath] = cover;
+      }
+      
+      setState(() {
+        _books = books;
+        _bookCovers = covers;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.book, size: 100, color: Colors.grey),
-          const SizedBox(height: 20),
-          const Text(
-            '欢迎使用AI阅读助手',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 40),
-          ElevatedButton.icon(
-            onPressed: onPickFile,
-            icon: const Icon(Icons.upload_file),
-            label: const Text('选择EPUB文件'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 32,
-                vertical: 16,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (onLoadAsset != null)
-            ElevatedButton.icon(
-              onPressed: onLoadAsset,
-              icon: const Icon(Icons.book),
-              label: const Text('打开示例EPUB'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('我的书架'),
+        centerTitle: true,
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _books.isEmpty
+              ? const Center(
+                  child: Text(
+                    '没有找到书籍\n请将epub文件放入assets/books/目录',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 0.7,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  itemCount: _books.length,
+                  itemBuilder: (context, index) {
+                    return _buildBookCard(_books[index]);
+                  },
                 ),
+    );
+  }
+
+  Widget _buildBookCard(Book book) {
+    final cover = _bookCovers[book.filePath];
+    
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ReaderScreen(book: book),
+          ),
+        );
+      },
+      child: Card(
+        elevation: 4,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Container(
+                color: Colors.grey[300],
+                child: cover != null
+                    ? Image.memory(
+                        cover,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(Icons.book, size: 64);
+                        },
+                      )
+                    : const Icon(Icons.book, size: 64),
               ),
             ),
-          const SizedBox(height: 20),
-          TextButton.icon(
-            onPressed: onInputText,
-            icon: const Icon(Icons.text_fields),
-            label: const Text('或直接输入文本测试'),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    book.title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    book.author,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

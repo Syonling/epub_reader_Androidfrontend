@@ -1,31 +1,28 @@
-//所有API调用
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
 import '../models/analysis_result.dart';
 
 class ApiService {
-  // 发送文本到后端分析
-  Future<AnalysisResult> analyzeText(String text) async {
+  static Future<AnalysisResult?> analyzeText(String text) async {
     try {
-      final response = await http.post(
-        Uri.parse(ApiConstants.analyzeUrl),
-        headers: ApiConstants.headers,
-        body: jsonEncode({'text': text}),
-      ).timeout(ApiConstants.timeout);
+      final url = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.analyzeEndpoint}');
+      
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'text': text}),
+          )
+          .timeout(ApiConstants.connectionTimeout);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        return AnalysisResult.fromJson(data);
-      } else {
-        throw Exception('后端错误: ${response.statusCode}');
+        final jsonResponse = jsonDecode(utf8.decode(response.bodyBytes));
+        return AnalysisResult.fromJson(jsonResponse);
       }
+      return null;
     } catch (e) {
-      throw Exception('连接失败: $e');
+      return null;
     }
   }
-
-  // 未来可以添加其他API调用
-  // Future<String> translateText(String text) async { ... }
-  // Future<List<String>> getVocabulary(String text) async { ... }
 }
