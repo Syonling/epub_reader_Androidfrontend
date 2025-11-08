@@ -1,6 +1,6 @@
 class Env {
   // 开发环境：使用Mac本地IP
-  static const String devBackendUrl = 'http://192.168.11.35:5001';
+  static const String devBackendUrl = 'http://192.168.11.41:5001';
   
   // 生产环境：使用服务器IP
   static const String prodBackendUrl = 'http://YOUR_SERVER_IP:5001';

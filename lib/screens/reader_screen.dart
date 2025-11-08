@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:epubx/epubx.dart' as epubx;
+import 'package:webview_flutter/webview_flutter.dart';
 import '../models/book.dart';
 import '../models/reader_settings.dart';
 import '../services/epub_service.dart';
@@ -34,6 +35,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   List<List<EpubImageInfo>> _chapterImages = [];
   String _selectedText = '';
   ReaderSettings _settings = ReaderSettings();
+  bool _isVerticalText = false; // 当前章节是否为竖排
+  WebViewController? _webViewController;
 
   @override
   void initState() {
@@ -77,11 +80,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
       }
       print('==================================\n');
       
+      // 检测第一章是否为竖排文本
+      bool isVertical = false;
+      if (contents.isNotEmpty) {
+        isVertical = EpubService.isVerticalHtml(contents[0]);
+      }
+      
       setState(() {
         _epubBook = book;
         _chapterContents = contents;
         _chapterTitles = titles;
         _chapterFileNames = fileNames;
+        _isVerticalText = isVertical;
         _isLoading = false;
       });
       
@@ -282,6 +292,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
           _currentChapterIndex = targetChapter!;
           _currentPageIndex = 0;
           _selectedText = '';
+          // 更新竖排检测
+          if (targetChapter < _chapterContents.length) {
+            _isVerticalText = EpubService.isVerticalHtml(_chapterContents[targetChapter]);
+          }
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
@@ -320,6 +334,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
           _currentChapterIndex = targetChapter!;
           _currentPageIndex = 0;
           _selectedText = '';
+          // 更新竖排检测
+          if (targetChapter < _chapterContents.length) {
+            _isVerticalText = EpubService.isVerticalHtml(_chapterContents[targetChapter]);
+          }
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
@@ -387,6 +405,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
         _currentChapterIndex++;
         _currentPageIndex = 0;
         _selectedText = '';
+        // 更新竖排检测
+        if (_currentChapterIndex < _chapterContents.length) {
+          _isVerticalText = EpubService.isVerticalHtml(_chapterContents[_currentChapterIndex]);
+        }
       });
     }
   }
@@ -403,6 +425,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
         _currentChapterIndex--;
         _currentPageIndex = _chapterPages[_currentChapterIndex].length - 1;
         _selectedText = '';
+        // 更新竖排检测
+        if (_currentChapterIndex < _chapterContents.length) {
+          _isVerticalText = EpubService.isVerticalHtml(_chapterContents[_currentChapterIndex]);
+        }
       });
     }
   }
@@ -419,6 +445,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
             _currentChapterIndex = index;
             _currentPageIndex = 0;
             _selectedText = '';
+            // 更新竖排检测
+            if (index < _chapterContents.length) {
+              _isVerticalText = EpubService.isVerticalHtml(_chapterContents[index]);
+            }
           });
         },
       ),
@@ -526,68 +556,194 @@ class _ReaderScreenState extends State<ReaderScreen> {
           _nextPage();
         }
       },
-      child: Container(
-        color: Colors.white,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 24, 
-          vertical: 40,  // 上下边距
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // *** 问题1修复：完全移除正文大标题，避免重复和错误 ***
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildPageContentWithInlineImages(currentPage, currentChapterLinks, currentChapterImages),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-                padding: const EdgeInsets.only(
-                  top: 20,     // 按钮栏距离内容的距离
-                  bottom: 0,   // 按钮栏距离底部的距离
-                ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: _isVerticalText 
+          ? _buildVerticalWebView(currentPage)
+          : _buildHorizontalContent(currentPage, currentChapterLinks, currentChapterImages),
+    );
+  }
+
+  Widget _buildHorizontalContent(String currentPage, List<LinkInfo> links, List<EpubImageInfo> images) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 24, 
+        vertical: 40,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextButton.icon(
-                    onPressed: _currentPageIndex > 0 || _currentChapterIndex > 0
-                        ? _previousPage
-                        : null,
-                    icon: const Icon(Icons.arrow_back, size: 30),  // ← 图标大小
-                    label: const Text(
-                      '上一页',
-                      style: TextStyle(fontSize: 20),  // ← 文字大小
-                    ),
-                  ),
-                  Text(
-                    '${_currentPageIndex + 1} / ${_chapterPages[_currentChapterIndex].length}',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _currentPageIndex < _chapterPages[_currentChapterIndex].length - 1 ||
-                            _currentChapterIndex < _chapterPages.length - 1
-                        ? _nextPage
-                        : null,
-                    icon: const Icon(Icons.arrow_forward, size: 30),  // ← 图标大小
-                    label: const Text(
-                      '下一页',
-                      style: TextStyle(fontSize: 20),  // ← 文字大小
-                    ),
-                  ),
+                  _buildPageContentWithInlineImages(currentPage, links, images),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              top: 20,
+              bottom: 0,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton.icon(
+                  onPressed: _currentPageIndex > 0 || _currentChapterIndex > 0
+                      ? _previousPage
+                      : null,
+                  icon: const Icon(Icons.arrow_back, size: 30),
+                  label: const Text(
+                    '上一页',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                ),
+                Text(
+                  '${_currentPageIndex + 1} / ${_chapterPages[_currentChapterIndex].length}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _currentPageIndex < _chapterPages[_currentChapterIndex].length - 1 ||
+                          _currentChapterIndex < _chapterPages.length - 1
+                      ? _nextPage
+                      : null,
+                  icon: const Icon(Icons.arrow_forward, size: 30),
+                  label: const Text(
+                    '下一页',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVerticalWebView(String currentPage) {
+    // 为竖排文本构建完整的HTML，添加文本选择支持
+    final injectedHtml = '''
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<style>
+  html, body { 
+    margin: 0; 
+    padding: 20px; 
+    background: #fff;
+    height: 100%;
+    overflow: auto;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  body { 
+    writing-mode: vertical-rl; 
+    -webkit-writing-mode: vertical-rl;
+    font-size: ${_settings.fontSize.size}px;
+    line-height: 1.8;
+  }
+  img { 
+    max-width: 100%; 
+    height: auto; 
+  }
+  ruby rt { 
+    font-size: 0.6em; 
+  }
+  p {
+    margin: 0 1em;
+  }
+  ::selection {
+    background: #b3d4fc;
+  }
+</style>
+<script>
+  // 监听文本选择
+  document.addEventListener('selectionchange', function() {
+    const selection = window.getSelection();
+    const selectedText = selection.toString().trim();
+    if (selectedText.length > 0) {
+      // 通过JavaScriptChannel发送选中的文本到Flutter
+      if (window.TextSelection) {
+        window.TextSelection.postMessage(selectedText);
+      }
+    }
+  });
+</script>
+</head>
+<body>
+$currentPage
+</body>
+</html>''';
+
+    _webViewController ??= WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.white)
+      ..addJavaScriptChannel(
+        'TextSelection',
+        onMessageReceived: (JavaScriptMessage message) {
+          // 接收WebView中选中的文本
+          setState(() {
+            _selectedText = message.message;
+          });
+          print('WebView选中文本: ${message.message}');
+        },
+      );
+
+    _webViewController!.loadHtmlString(injectedHtml);
+
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          Expanded(
+            child: WebViewWidget(controller: _webViewController!),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton.icon(
+                  onPressed: _currentPageIndex > 0 || _currentChapterIndex > 0
+                      ? _previousPage
+                      : null,
+                  icon: const Icon(Icons.arrow_back, size: 30),
+                  label: const Text(
+                    '前頁',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                ),
+                Text(
+                  '${_currentPageIndex + 1} / ${_chapterPages[_currentChapterIndex].length}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _currentPageIndex < _chapterPages[_currentChapterIndex].length - 1 ||
+                          _currentChapterIndex < _chapterPages.length - 1
+                      ? _nextPage
+                      : null,
+                  icon: const Icon(Icons.arrow_forward, size: 30),
+                  label: const Text(
+                    '次頁',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -11,12 +11,12 @@ class PaginationCalculator {
         - padding.top  // 状态栏
         - (kToolbarHeight)  // AppBar
         - 80  // 顶部padding
-        - 180; // 底部padding + 翻页按钮
+        - 100; // 底部padding + 翻页按钮
     
     return availableHeight;
   }
   
-  // 基于实际渲染高度来分页（支持段落内断行）
+  // 改进的分页算法：使用二分查找优化性能
   static List<String> paginateByHeight(
     String text, 
     double availableHeight,
@@ -25,184 +25,118 @@ class PaginationCalculator {
   ) {
     if (text.isEmpty) return [''];
     
-    final paragraphs = text.split('\n');
     List<String> pages = [];
-    List<String> currentPageLines = [];
-    double currentPageHeight = 0;
+    int startIndex = 0;
     
-    for (var paragraph in paragraphs) {
-      if (paragraph.isEmpty) {
-        // 空行处理
-        const emptyLineHeight = 16.0;
-        if (currentPageHeight + emptyLineHeight > availableHeight && currentPageLines.isNotEmpty) {
-          pages.add(currentPageLines.join('\n'));
-          currentPageLines = [];
-          currentPageHeight = 0;
-        }
-        currentPageLines.add('');
-        currentPageHeight += emptyLineHeight;
-        continue;
+    while (startIndex < text.length) {
+      // 使用二分查找找到最大可容纳的字符数
+      int endIndex = _findMaxFitIndex(
+        text,
+        startIndex,
+        availableHeight,
+        textStyle,
+        pageWidth,
+      );
+      
+      // 如果没有进展，至少要添加一个字符（防止死循环）
+      if (endIndex <= startIndex) {
+        endIndex = startIndex + 1;
       }
       
-      // 计算整段落的高度
-      final fullParagraphHeight = _calculateTextHeight(paragraph, textStyle, pageWidth);
+      // 尝试在合适的位置断开（避免在单词/句子中间）
+      endIndex = _adjustBreakPoint(text, startIndex, endIndex);
       
-      // 如果整段落能放进当前页，直接添加
-      if (currentPageHeight + fullParagraphHeight <= availableHeight) {
-        currentPageLines.add(paragraph);
-        currentPageHeight += fullParagraphHeight;
-      } else {
-        // 段落太长，需要智能拆分
-        final splitResult = _splitParagraphIntelligently(
-          paragraph,
-          availableHeight - currentPageHeight,
-          availableHeight,
-          textStyle,
-          pageWidth,
-        );
-        
-        for (int i = 0; i < splitResult.length; i++) {
-          final part = splitResult[i];
-          if (part.isEmpty) continue;
-          
-          final partHeight = _calculateTextHeight(part, textStyle, pageWidth);
-          
-          // 如果当前页已经有内容且放不下这部分，开始新页
-          if (currentPageLines.isNotEmpty && currentPageHeight + partHeight > availableHeight) {
-            pages.add(currentPageLines.join('\n'));
-            currentPageLines = [];
-            currentPageHeight = 0;
-          }
-          
-          currentPageLines.add(part);
-          currentPageHeight += partHeight;
-        }
-      }
+      pages.add(text.substring(startIndex, endIndex));
+      startIndex = endIndex;
     }
     
-    // 添加最后一页
-    if (currentPageLines.isNotEmpty) {
-      pages.add(currentPageLines.join('\n'));
-    }
-    
-    print('=== 分页结果 ===');
-    print('总段落数: ${paragraphs.length}');
+    print('=== 改进的分页结果 ===');
+    print('总字符数: ${text.length}');
     print('总页数: ${pages.length}');
     print('可用高度: ${availableHeight.toStringAsFixed(0)}');
-    print('===============\n');
+    print('平均每页字符数: ${text.length ~/ pages.length}');
+    print('==================\n');
     
-    return pages.isEmpty ? [''] : pages;
+    return pages;
   }
   
-  // 智能拆分段落，避免孤字和孤标点
-  static List<String> _splitParagraphIntelligently(
-    String paragraph,
-    double remainingHeight,
-    double pageHeight,
+  // 使用二分查找找到最大可容纳的字符索引
+  static int _findMaxFitIndex(
+    String text,
+    int startIndex,
+    double maxHeight,
     TextStyle textStyle,
-    double pageWidth,
+    double maxWidth,
   ) {
-    List<String> parts = [];
-    String remaining = paragraph;
-    double availableHeight = remainingHeight;
+    int left = startIndex + 1;  // 至少包含一个字符
+    int right = text.length;
+    int result = startIndex + 1;
     
-    while (remaining.isNotEmpty) {
-      // 如果剩余高度太小，直接换页
-      if (availableHeight < pageHeight * 0.15) {
-        availableHeight = pageHeight;
+    // 二分查找最大可容纳的字符数
+    while (left <= right) {
+      int mid = (left + right) ~/ 2;
+      final substring = text.substring(startIndex, mid);
+      final height = _calculateTextHeight(substring, textStyle, maxWidth);
+      
+      if (height <= maxHeight) {
+        result = mid;
+        left = mid + 1;
+      } else {
+        right = mid - 1;
       }
-      
-      // 二分查找最佳断点
-      int left = 1;
-      int right = remaining.length;
-      int bestSplit = 0;
-      
-      while (left <= right) {
-        int mid = (left + right) ~/ 2;
-        String testText = remaining.substring(0, mid);
-        double testHeight = _calculateTextHeight(testText, textStyle, pageWidth);
-        
-        if (testHeight <= availableHeight) {
-          bestSplit = mid;
-          left = mid + 1;
-        } else {
-          right = mid - 1;
-        }
-      }
-      
-      // 如果找不到合适的断点，至少拆分一个字符
-      if (bestSplit == 0) {
-        bestSplit = 1;
-      }
-      
-      // 调整断点，避免孤字和孤标点
-      bestSplit = _adjustSplitPoint(remaining, bestSplit);
-      
-      // 拆分文本
-      String currentPart = remaining.substring(0, bestSplit).trim();
-      remaining = remaining.substring(bestSplit).trim();
-      
-      if (currentPart.isNotEmpty) {
-        parts.add(currentPart);
-      }
-      
-      // 下一页有完整高度
-      availableHeight = pageHeight;
     }
     
-    return parts;
+    return result;
   }
   
-  // 调整拆分点，避免孤字和孤标点
-  static int _adjustSplitPoint(String text, int initialSplit) {
-    if (initialSplit >= text.length) {
-      return text.length;
-    }
+  // 调整断点位置，优先在段落、句子、词语边界断开
+  static int _adjustBreakPoint(String text, int start, int end) {
+    if (end >= text.length) return end;
+    if (end <= start + 1) return end;
     
-    // 避免在最后只留下1-2个字符
-    if (text.length - initialSplit <= 2) {
-      // 向前调整，至少保留3个字符到下一页
-      int newSplit = text.length - 3;
-      if (newSplit > 0 && newSplit < initialSplit) {
-        return newSplit;
+    final searchRange = 50; // 向前搜索的字符数
+    final searchStart = (end - searchRange).clamp(start, end);
+    
+    // 优先级1: 段落边界（换行符）
+    for (int i = end - 1; i >= searchStart; i--) {
+      if (text[i] == '\n') {
+        return i + 1;
       }
     }
     
-    // 避免在断点处只切下1-2个字符
-    if (initialSplit <= 2) {
-      // 如果前面只有1-2个字符，尝试多拿一些
-      int newSplit = 3.clamp(0, text.length);
-      if (newSplit > initialSplit) {
-        return newSplit;
-      }
-    }
-    
-    // 尝试在标点符号处断开（更自然）
-    final punctuations = ['。', '！', '？', '；', '…', ')', '）', '"', '"', '」'];
-    
-    // 在附近查找标点（前后10个字符范围内）
-    int searchStart = (initialSplit - 10).clamp(0, text.length);
-    int searchEnd = (initialSplit + 10).clamp(0, text.length);
-    
-    for (int i = initialSplit; i < searchEnd; i++) {
-      if (punctuations.contains(text[i])) {
-        // 确保断点后还有足够的内容
-        if (text.length - (i + 1) >= 3) {
-          return i + 1;
+    // 优先级2: 句子结束标点
+    const sentenceEnds = ['。', '！', '？', '．', '.', '!', '?'];
+    for (int i = end - 1; i >= searchStart; i--) {
+      if (sentenceEnds.contains(text[i])) {
+        // 确保标点后面不是引号或括号
+        if (i + 1 < text.length) {
+          final nextChar = text[i + 1];
+          if (nextChar == '"' || nextChar == '」' || nextChar == '』' || 
+              nextChar == ')' || nextChar == '）') {
+            return i + 2;
+          }
         }
+        return i + 1;
       }
     }
     
-    for (int i = initialSplit - 1; i >= searchStart; i--) {
+    // 优先级3: 逗号、顿号等次要标点
+    const punctuations = ['、', '，', ',', '；', ';', '：', ':'];
+    for (int i = end - 1; i >= (end - 30).clamp(start, end); i--) {
       if (punctuations.contains(text[i])) {
-        // 确保断点后还有足够的内容
-        if (text.length - (i + 1) >= 3) {
-          return i + 1;
-        }
+        return i + 1;
       }
     }
     
-    return initialSplit;
+    // 优先级4: 空格（主要用于英文）
+    for (int i = end - 1; i >= (end - 20).clamp(start, end); i--) {
+      if (text[i] == ' ') {
+        return i + 1;
+      }
+    }
+    
+    // 如果都没有找到合适的断点，就在原位置断开
+    return end;
   }
   
   // 计算文本实际渲染高度
@@ -211,6 +145,8 @@ class PaginationCalculator {
     TextStyle style,
     double maxWidth,
   ) {
+    if (text.isEmpty) return 0;
+    
     final textPainter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
@@ -219,9 +155,6 @@ class PaginationCalculator {
     
     textPainter.layout(maxWidth: maxWidth);
     
-    // 段落之间的间距
-    const paragraphSpacing = 16.0;
-    
-    return textPainter.height + paragraphSpacing;
+    return textPainter.height;
   }
 }
