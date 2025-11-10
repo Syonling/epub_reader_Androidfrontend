@@ -12,6 +12,7 @@ import '../widgets/chapter_list_dialog.dart';
 import '../widgets/font_size_selector.dart';
 import '../widgets/clickable_text.dart';
 import 'dart:typed_data';
+import '../widgets/llm_selector.dart';
 
 class ReaderScreen extends StatefulWidget {
   final Book book;
@@ -482,6 +483,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
               onPressed: _showChapterList,
               tooltip: '目录',
             ),
+          const LlmSelector(),
         ],
       ) : null,
       body: Stack(
