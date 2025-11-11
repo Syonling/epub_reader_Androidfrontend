@@ -5,6 +5,7 @@ import '../models/book.dart';
 import '../models/reader_settings.dart';
 import '../services/epub_service.dart';
 import '../services/api_service.dart';
+import '../services/book_cache_service.dart';
 import '../utils/html_parser.dart';
 import '../utils/pagination_calculator.dart';
 import '../widgets/result_dialog.dart';
@@ -47,6 +48,79 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   Future<void> _loadBook() async {
     try {
+      print('\n========== 开始加载书籍 ==========');
+      print('书籍ID: ${widget.book.id}');
+      
+      // 1. 先尝试从缓存加载
+      final cache = await BookCacheService.loadCache(
+        widget.book.id,
+        _settings.fontSize.size,
+      );
+
+      if (cache != null) {
+        // 缓存命中！直接使用缓存的分页结果
+        print('✓ 使用缓存数据，跳过分页计算');
+        
+        // 仍然需要加载EPUB文件（为了获取章节内容、标题等）
+        final book = await EpubService.loadEpubFromAsset(widget.book.filePath);
+        
+        List<String> contents = [];
+        List<String> titles = [];
+        List<String> fileNames = [];
+        
+        if (book.Content?.Html != null) {
+          for (var entry in book.Content!.Html!.entries) {
+            try {
+              final htmlContent = entry.value;
+              final content = htmlContent.Content;
+              
+              if (content != null && HtmlParser.hasValidContent(content)) {
+                contents.add(content);
+                fileNames.add(entry.key);
+                titles.add(_extractTitleFromHtml(content, entry.key));
+              }
+            } catch (e) {
+              print('跳过文件: ${entry.key}');
+            }
+          }
+        }
+        
+        if (contents.isEmpty && book.Chapters != null) {
+          _extractChapterContents(book.Chapters!, contents, titles, fileNames);
+        }
+        
+        bool isVertical = false;
+        if (contents.isNotEmpty) {
+          isVertical = EpubService.isVerticalHtml(contents[0]);
+        }
+        
+        setState(() {
+          _epubBook = book;
+          _chapterContents = contents;
+          _chapterTitles = titles;
+          _chapterFileNames = fileNames;
+          _chapterPages = cache.allChapterPages;
+          _currentChapterIndex = cache.currentChapter.clamp(0, contents.length - 1);
+          _currentPageIndex = cache.currentPage.clamp(0, 
+              cache.allChapterPages[_currentChapterIndex].length - 1);
+          _isVerticalText = isVertical;
+          _isLoading = false;
+        });
+        
+        // 后台生成链接和图片信息
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _generateLinksAndImages();
+        });
+        
+        print('✓ 书籍加载完成（使用缓存）');
+        print('  恢复位置: 章节$_currentChapterIndex 页$_currentPageIndex');
+        print('==================================\n');
+        return;
+      }
+      
+      // 2. 缓存未命中，正常加载并计算分页
+      print('⚠ 无缓存，开始完整加载');
+      
       final book = await EpubService.loadEpubFromAsset(widget.book.filePath);
       
       List<String> contents = [];
@@ -96,8 +170,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
         _isLoading = false;
       });
       
+      // 开始计算分页（首次加载会花费时间）
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _recalculatePages();
+        _recalculatePagesAndCache();
       });
     } catch (e) {
       print('加载书籍失败: $e');
@@ -219,11 +294,107 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
   }
 
+  /// 新方法：计算分页并保存到缓存（参考 flutter_read 的设计）
+  void _recalculatePagesAndCache() {
+    if (!mounted || _chapterContents.isEmpty) return;
+    
+    print('\n========== 开始计算分页 ==========');
+    final startTime = DateTime.now();
+    
+    final size = MediaQuery.of(context).size;
+    final availableHeight = PaginationCalculator.calculateAvailableHeight(context);
+    final availableWidth = size.width - 48;
+    
+    final textStyle = TextStyle(
+      fontSize: _settings.fontSize.size,
+      height: 1.8,
+    );
+    
+    List<List<String>> allPages = [];
+    
+    // 计算所有章节的分页
+    for (int i = 0; i < _chapterContents.length; i++) {
+      final parsed = HtmlParser.extractContentWithLinks(_chapterContents[i]);
+      
+      final pages = PaginationCalculator.paginateByHeight(
+        parsed.text,
+        availableHeight,
+        textStyle,
+        availableWidth,
+      );
+      
+      allPages.add(pages);
+      
+      // 显示进度
+      if ((i + 1) % 10 == 0 || i == _chapterContents.length - 1) {
+        print('进度: ${i + 1}/${_chapterContents.length} 章节');
+      }
+    }
+    
+    final endTime = DateTime.now();
+    final duration = endTime.difference(startTime).inMilliseconds;
+    
+    print('✓ 分页计算完成');
+    print('  耗时: ${duration}ms');
+    print('  总页数: ${allPages.fold(0, (sum, pages) => sum + pages.length)}');
+    print('==================================\n');
+    
+    setState(() {
+      _chapterPages = allPages;
+    });
+    
+    // 后台生成链接和图片
+    _generateLinksAndImages();
+    
+    // 异步保存缓存（不阻塞UI）
+    _saveCacheAsync(allPages);
+  }
+
+  /// 生成链接和图片信息（单独提取）
+  void _generateLinksAndImages() {
+    List<List<LinkInfo>> allLinks = [];
+    List<List<EpubImageInfo>> allImages = [];
+    
+    for (var content in _chapterContents) {
+      final parsed = HtmlParser.extractContentWithLinks(content);
+      allLinks.add(parsed.links);
+      allImages.add(parsed.images);
+    }
+    
+    setState(() {
+      _chapterLinks = allLinks;
+      _chapterImages = allImages;
+    });
+  }
+
+  /// 异步保存缓存
+  Future<void> _saveCacheAsync(List<List<String>> allPages) async {
+    try {
+      final cache = BookCache(
+        bookId: widget.book.id,
+        allChapterPages: allPages,
+        currentChapter: _currentChapterIndex,
+        currentPage: _currentPageIndex,
+        fontSize: _settings.fontSize.size,
+        cachedAt: DateTime.now(),
+      );
+      
+      await BookCacheService.saveCache(cache);
+    } catch (e) {
+      print('❌ 保存缓存时出错: $e');
+    }
+  }
+
   void _changeFontSize(FontSize newFontSize) {
     setState(() {
       _settings = _settings.copyWith(fontSize: newFontSize);
     });
-    _recalculatePages();
+    
+    // 清除旧的缓存（字体大小改变）
+    BookCacheService.clearCache(widget.book.id);
+    
+    // 重新计算并保存新的缓存
+    _recalculatePagesAndCache();
   }
 
   void _handleLinkTap(String url) {
@@ -412,6 +583,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
         }
       });
     }
+    
+    // 自动保存进度（轻量级操作）
+    _updateProgress();
   }
 
   void _previousPage() {
@@ -432,6 +606,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
         }
       });
     }
+    
+    // 自动保存进度（轻量级操作）
+    _updateProgress();
+  }
+
+  /// 更新阅读进度（只更新进度，不重新保存分页）
+  void _updateProgress() {
+    BookCacheService.updateProgress(
+      widget.book.id,
+      _currentChapterIndex,
+      _currentPageIndex,
+    );
   }
 
   void _showChapterList() {
