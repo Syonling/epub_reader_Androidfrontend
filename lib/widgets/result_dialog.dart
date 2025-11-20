@@ -500,22 +500,26 @@ class ResultDialog extends StatelessWidget {
                           ),
                         ],
                         
-                        // ⭐ 所有变形展示
+                        // ⭐ 折叠框：所有活用形式（默认折叠）
                         if (conjugation.containsKey('all_forms') &&
                             conjugation['all_forms'] is Map) ...[
                           const SizedBox(height: 12),
-                          const Divider(),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '📖 所有活用形式',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
+                          ExpansionTile(
+                            title: const Text(
+                              '📖 所有活用形式',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildVerbFormsGrid(
-                            conjugation['all_forms'] as Map<String, dynamic>,
+                            initiallyExpanded: false, // ⭐ 默认折叠
+                            children: [
+                              const SizedBox(height: 8),
+                              _buildVerbFormsGrid(
+                                conjugation['all_forms'] as Map<String, dynamic>,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
                           ),
                         ],
                       ],
