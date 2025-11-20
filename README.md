@@ -11,8 +11,7 @@
 
 ## 🎬 デモンストレーション
  
-### 単語分析
-**Debug中**
+### 単語分析 **Debug中**
 ![单词分析演示](assets/demos/word_analysis.gif)
 
 ### 長文解析 - AIによる構文解析
