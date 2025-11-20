@@ -4,6 +4,7 @@ import '../models/analysis_result.dart';
 
 /// 分析结果弹窗
 /// 支持显示 DeepSeek 返回的 JSON 格式结果
+/// 增强：支持完整的日语动词变形展示
 class ResultDialog extends StatelessWidget {
   final AnalysisResult result;
 
@@ -141,22 +142,74 @@ class ResultDialog extends StatelessWidget {
 
   /// 构建词典解析内容
   Widget _buildWordParserContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildOriginalText(),
-        const SizedBox(height: 16),
-        const Text(
-          '📚 词典解析',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+    try {
+      // 获取词典解析结果
+      final analysisResult = result.analysis['result'];
+      Map<String, dynamic> parsedResult;
+      
+      if (analysisResult is String) {
+        // 如果是字符串，需要解析
+        parsedResult = jsonDecode(analysisResult);
+      } else {
+        // 如果已经是对象，直接使用
+        parsedResult = analysisResult as Map<String, dynamic>;
+      }
+      
+      // 使用与AI分析相同的格式显示
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildOriginalText(),
+          const SizedBox(height: 16),
+          
+          // 翻译
+          if (parsedResult['translation'] != null)
+            _buildTranslation(parsedResult['translation']),
+          
+          const SizedBox(height: 16),
+          
+          // 语法点
+          if (parsedResult['grammar_points'] != null && 
+              (parsedResult['grammar_points'] as List).isNotEmpty)
+            _buildGrammarPoints(parsedResult['grammar_points']),
+          
+          const SizedBox(height: 16),
+          
+          // 词汇
+          if (parsedResult['vocabulary'] != null)
+            _buildVocabulary(parsedResult['vocabulary']),
+          
+          const SizedBox(height: 16),
+          
+          // 特殊说明
+          if (parsedResult['special_notes'] != null &&
+              (parsedResult['special_notes'] as List).isNotEmpty)
+            _buildSpecialNotes(parsedResult['special_notes']),
+        ],
+      );
+    } catch (e) {
+      // 解析失败，显示错误
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildOriginalText(),
+          const SizedBox(height: 16),
+          const Text(
+            '❌ 解析失败',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.red,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(_formatAnalysis(result.analysis)),
-      ],
-    );
+          const SizedBox(height: 8),
+          Text('错误: $e'),
+          const SizedBox(height: 16),
+          const Text('原始结果:'),
+          Text(result.analysis['result'].toString()),
+        ],
+      );
+    }
   }
 
   Widget _buildOriginalText() {
@@ -268,14 +321,14 @@ class ResultDialog extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(g['explanation'] ?? ''),
                 const SizedBox(height: 4),
-                Text(
-                  '例：${g['example_in_sentence'] ?? ''}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
+                // Text(
+                //   '例：${g['example_in_sentence'] ?? ''}',
+                //   style: TextStyle(
+                //     fontSize: 14,
+                //     color: Colors.grey.shade600,
+                //     fontStyle: FontStyle.italic,
+                //   ),
+                // ),
               ],
             ),
           ),
@@ -319,13 +372,14 @@ class ResultDialog extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          Text(
-                            v['reading'] ?? '',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade600,
+                          if ((v['reading'] ?? '').isNotEmpty)
+                            Text(
+                              v['reading'] ?? '',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade600,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -352,10 +406,11 @@ class ResultDialog extends StatelessWidget {
                 const SizedBox(height: 8),
                 
                 // 意思
-                Text(
-                  '意思：${v['meaning'] ?? ''}',
-                  style: const TextStyle(fontSize: 15),
-                ),
+                if ((v['meaning'] ?? '').isNotEmpty)
+                  Text(
+                    '意思：${v['meaning']}',
+                    style: const TextStyle(fontSize: 15),
+                  ),
                 
                 // 活用信息
                 if (conjugation['has_conjugation'] == true) ...[
@@ -369,10 +424,21 @@ class ResultDialog extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 基本活用信息
                         Text(
                           '原型：${conjugation['original_form'] ?? ''}',
                           style: const TextStyle(fontSize: 14),
                         ),
+                        if ((conjugation['current_form'] ?? '').isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          // Text(
+                          //   '当前形式：${conjugation['current_form']}',
+                          //   style: const TextStyle(
+                          //     fontSize: 14,
+                          //     fontWeight: FontWeight.w500,
+                          //   ),
+                          // ),
+                        ],
                         const SizedBox(height: 4),
                         Text(
                           '变形：${conjugation['conjugation_type'] ?? ''}',
@@ -381,20 +447,181 @@ class ResultDialog extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '原因：${conjugation['reason'] ?? ''}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade700,
+                        if ((conjugation['reason'] ?? '').isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '原因：${conjugation['reason']}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade700,
+                            ),
                           ),
-                        ),
+                        ],
+                        
+                        // ⭐ 动词类型信息
+                        if (conjugation['verb_class'] != null &&
+                            conjugation['verb_class'].toString().isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: Colors.green.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              conjugation['verb_class'].toString(),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                        
+                        // ⭐ 自他动词
+                        if (conjugation['transitivity'] != null &&
+                            conjugation['transitivity'].toString().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            conjugation['transitivity'].toString(),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                        
+                        // ⭐ 所有变形展示
+                        if (conjugation.containsKey('all_forms') &&
+                            conjugation['all_forms'] is Map) ...[
+                          const SizedBox(height: 12),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '📖 所有活用形式',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildVerbFormsGrid(
+                            conjugation['all_forms'] as Map<String, dynamic>,
+                          ),
+                        ],
                       ],
                     ),
                   ),
                 ],
               ],
             ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// ⭐ 构建动词变形网格
+  Widget _buildVerbFormsGrid(Map<String, dynamic> allForms) {
+    // 定义变形的显示顺序和名称
+    final formDefinitions = [
+      {'key': 'dictionary_form', 'name': '辞书形', 'color': Colors.blue},
+      {'key': 'masu_form', 'name': 'ます形', 'color': Colors.green},
+      {'key': 'te_form', 'name': 'て形', 'color': Colors.orange},
+      {'key': 'ta_form', 'name': 'た形', 'color': Colors.orange},
+      {'key': 'nai_form', 'name': 'ない形', 'color': Colors.red},
+      {'key': 'nakatta_form', 'name': 'なかった形', 'color': Colors.red},
+      {'key': 'ba_form', 'name': 'ば形', 'color': Colors.purple},
+      {'key': 'command_form', 'name': '命令形', 'color': Colors.pink},
+      {'key': 'volitional_form', 'name': '意志形', 'color': Colors.indigo},
+      {'key': 'passive_form', 'name': '受身形', 'color': Colors.teal},
+      {'key': 'causative_form', 'name': '使役形', 'color': Colors.amber},
+      {'key': 'potential_form', 'name': '可能形', 'color': Colors.cyan},
+      {'key': 'causative_passive_form', 'name': '使役受身形', 'color': Colors.brown},
+    ];
+    
+    return Column(
+      children: formDefinitions.where((def) {
+        // 只显示存在的变形
+        final key = def['key'] as String;
+        return allForms.containsKey(key) && 
+               allForms[key] != null &&
+               allForms[key].toString().isNotEmpty &&
+               !allForms[key].toString().contains('待实现') &&
+               !allForms[key].toString().contains('需要');
+      }).map((def) {
+        final formKey = def['key'] as String;
+        final formName = def['name'] as String;
+        final formColor = def['color'] as Color;
+        final formValue = allForms[formKey].toString();
+        
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 变形名称标签
+              Container(
+                width: 95,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: formColor.withAlpha(38),  // 0.15 * 255 ≈ 38
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: formColor.withAlpha(102),  // 0.4 * 255 ≈ 102
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  formName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color.lerp(formColor, Colors.black, 0.6)!,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // 变形结果
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: Colors.grey.shade300,
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    formValue,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       }).toList(),

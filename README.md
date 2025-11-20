@@ -1,14 +1,27 @@
 # AI阅读助手 (AI Reading Assistant)
 
-一款基于AI的智能EPUB阅读器，支持选中文本进行语法分析和生词解析。
+選択したテキストの文法解析と語彙解析をサポートする、AI 搭載のインテリジェント EPUB リーダーです。(日本語説明ドキュメント作成中)
 
-[English](#english) | [中文](#chinese)
+> 💻 Backend：[EPUB Reader （AI Analysis）](https://github.com/Syonling/epub_reader_backend)
 
 ![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-blue)
-![Python](https://img.shields.io/badge/Python-3.14.0+-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.11.0+-brightgreen)
 ![Flutter](https://img.shields.io/badge/Flutter-3.35.6-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.1.2-orange)
 
+## 🎬 デモンストレーション
+
+### 単語分析
+**Debug中**
+![单词分析演示](assets/demos/word_analysis.gif)
+
+### 長文解析 - AIによる構文解析
+![句子分析演示](assets/demos/sentence_analysis.gif)
+
+### スイッチAPI
+![切换模型演示](assets/demos/switch_model.gif)
+
+[日本語](#日本語) | [English](#english-documentation)
 
 ---
 
