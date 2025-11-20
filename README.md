@@ -10,7 +10,7 @@
 ![Flask](https://img.shields.io/badge/Flask-3.1.2-orange)
 
 ## 🎬 デモンストレーション
-
+ 
 ### 単語分析
 **Debug中**
 ![单词分析演示](assets/demos/word_analysis.gif)
