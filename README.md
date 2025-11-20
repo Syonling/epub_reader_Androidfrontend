@@ -1,6 +1,10 @@
 # AI阅读助手 (AI Reading Assistant)
 
-選択したテキストの文法解析と語彙解析をサポートする、AI 搭載のインテリジェント EPUB リーダーです。(日本語説明ドキュメント作成中)
+選択したテキストの文法解析と語彙解析をサポートする、AI 搭載のインテリジェント EPUB リーダーです。
+
+(日本語説明ドキュメント作成中)
+
+**⬇️ 各分析機能の詳細については、バックエンドプロジェクトを参照してください。⬇️**
 
 > 💻 Backend：[EPUB Reader （AI Analysis）](https://github.com/Syonling/epub_reader_backend)
 
@@ -8,6 +12,21 @@
 ![Python](https://img.shields.io/badge/Python-3.11.0+-brightgreen)
 ![Flutter](https://img.shields.io/badge/Flutter-3.35.6-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.1.2-orange)
+
+## フロントエンド機能一覧
+### 実装された機能
+- [x] 本の表紙画像付きのホームページ本棚ディスプレイ
+- [x] 本のページネーションのプリロード
+- [x] EPUB書籍閲覧ディスプレイ
+- [x] 目次と脚注（ハイパーリンク）
+- [x] 長押しして単語/長文を選択
+- [x] 機能的な UI (API 選択、インタラクティブボタン、フォントサイズの調整、目次など)
+
+### 追加予定機能
+- [ ] より適切なページネーションデザイン
+- [ ] 縦書きの日本語書籍に対応
+- [ ] 書籍を追加するためのボタン
+- [ ] ……
 
 ## 🎬 デモンストレーション
  
